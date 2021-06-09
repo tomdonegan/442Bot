@@ -1,0 +1,20 @@
+{
+  "name": "442",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^0.21.1",
+    "console-stamp": "^3.0.2",
+    "discord.js": "^12.5.3",
+    "request": "^2.88.2",
+    "string-similarity": "^4.0.4",
+    "thesportsdb": "0.0.2"
+  }
+}
