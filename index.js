@@ -1,11 +1,13 @@
 require('console-stamp')(console, '[HH:MM:ss.l]');
+const axios = require('axios');
+const stringTable = require('string-table');
 const Discord = require('discord.js');
-const theSportsDB = require('thesportsdb');
+const DB = require('thesportsdb');
 const stringSimilarity = require('string-similarity');
 const client = new Discord.Client();
 const discordToken = process.env['DiscordToken'];
 const prefix = '!';
-theSportsDB.setApiKey(process.env['APIKey']);
+DB.setApiKey(process.env['APIKey']);
 
 let subscriptions = [{ user: 0, teamID: 0 }];
 let allFootballLeagues = [];
@@ -21,15 +23,17 @@ client.on('message', (msg) => {
   const command = args[0].toLowerCase();
   const messageContent = args.slice(1, args.length + 1).join(' ');
 
+  // List all available commands.
   if (command === '442commands') {
     msg.reply(
       `
       !subscribe (Team Name) - Subscribe to a team.
-      !mygames - Shows score data from previous 5 games. (User must be subscribed to a team.)
-      !history (Team Name) - Shows historic facts about a club.
+      !recentgames - Shows score data from previous 5 games. (User must be subscribed to a team.)
+      !history (League Name) - Shows historic facts about a league.
       !team (Team Name) - Shows team data. (Stadium, Age, Social Links etc.)
       !livescores - Shows all scores from currently live games.
       !leagueteams (League) - Returns a list of all teams playing in the selected league.
+      !lastgamestats - If available, returns stats for previous game. (User must be subscribed to a team.)
       `
       // Commands to add:
       // !nextgame
@@ -37,32 +41,40 @@ client.on('message', (msg) => {
       // !clubnews
     );
   }
+  // Subscribes a user to a chosen team, this enables the use of team specific commands.
   if (command === 'subscribe') {
-    let findTeam = async () => {
-      let teamData = await theSportsDB.getTeamByName(messageContent);
-      subscriptions.push({
-        user: msg.author.id,
-        teamID: teamData.teams[0].idTeam,
+    try {
+      DB.getTeamByName(messageContent).then((data) => {
+        subscriptions.push({
+          user: msg.author.id,
+          teamID: data.teams[0].idTeam
+        })
+        msg.reply(`You are now subscribed to ${data.teams[0].strTeam}`);
       });
-      msg.reply(`You are now subscribed to ${teamData.teams[0].strTeam}`);
-    };
-    findTeam();
+    } catch (error) {
+      msg.reply('Your subscription was not successful, please try again.')
+    }
+    
   }
   // Returns the scores of the last 5 subscribed team games.
-  if (command === 'mygames') {
+  if (command === 'recentgames' || command === 'nextgames' ) {
     let teamID = checkSubscriptionStatus(msg.author.id);
     if (teamID === void 0) {
       msg.reply(
-        'You are not currently subscribed to a team. Please use !subscribe (Team Name) before using !mygames'
+        'You are not currently subscribed to a team. Please use !subscribe (Team Name) before using !teamgames'
       );
+    } else if (command === 'recentgames') {
+      const gameData = DB.getPast5EventsByTeamId(teamID);
     } else {
-      let games = last5Games(teamID);
-      games.then((gameData) => {
+      const gameData = DB.getNext5EventsByTeamId(teamID);
+    }
+    game.then((gameData) => {
         let gamesList = [];
-        for (var i in gameData) {
+        const games = gameData.results;
+        for (var i in games) {
           gamesList.push(
             `
-            ${gameData[i].strHomeTeam} ${gameData[i].intHomeScore} : ${gameData[i].intAwayScore} ${gameData[i].strAwayTeam} (League: ${gameData[i].strLeague})
+            ${games[i].strHomeTeam} ${games[i].intHomeScore} : ${games[i].intAwayScore} ${games[i].strAwayTeam} (League: ${games[i].strLeague})
             `
           );
         }
@@ -72,9 +84,11 @@ client.on('message', (msg) => {
           ${gamesList[0]} ${gamesList[1]} ${gamesList[2]} ${gamesList[3]} ${gamesList[4]}
           `
         );
-      });
+      })
     }
   }
+
+
   // Show the history of a selected league.
   if (command === 'history') {
     const historyData = async () => {
@@ -90,7 +104,7 @@ client.on('message', (msg) => {
   // Returns team data (Age, League, Social Links)
   if (command === 'team') {
     let team = async () => {
-      let data = await theSportsDB.getTeamByName(messageContent);
+      let data = await DB.getTeamByName(messageContent);
       msg.reply(
         `
         ${data.teams[0].strAlternate} team info:\n
@@ -104,34 +118,34 @@ client.on('message', (msg) => {
         Instagram: http://${data.teams[0].strInstagram}\n
         Team Badge: ${data.teams[0].strTeamBadge}`
       );
+      msg.suppressEmbeds(true)
     };
     team();
   }
   //Live scores from all football games.
   if (command === 'livescores') {
-    let liveScores = async () => {
-      let liveGameData = await theSportsDB.getLivescoresBySport('soccer');
-      let games = liveGameData.events;
+    DB.getSoccerLivescores().then((games) => {
+      console.log(games)
+      const liveGames = games.events;
       let liveGameList = [];
       let gameString = 'Current Live Scores: ';
-      for (var i in games) {
+      for (var i in liveGames) {
         liveGameList.push(
           `
-            ${games[i].strHomeTeam} ${games[i].intHomeScore} : ${games[i].intAwayScore} ${games[i].strAwayTeam}  (Game Progress: ${games[i].strProgress}Minutes | Match Status: ${games[i].strStatus} | League: ${games[i].strLeague}) 
+            ${liveGames[i].strHomeTeam} ${liveGames[i].intHomeScore} : ${liveGames[i].intAwayScore} ${liveGames[i].strAwayTeam}  (Game Progress: ${liveGames[i].strProgress}Minutes | Match Status: ${liveGames[i].strStatus} | League: ${liveGames[i].strLeague}) 
             `
         );
         gameString += liveGameList[i];
       }
       msg.reply(`${gameString}`);
-    };
-    liveScores();
+    })
   }
   // Returns a list of teams currently playing in the selected league
   if (command === 'leagueteams') {
     let teams = [];
     const leagueTeams = async () => {
       const data = await getLeagueData(messageContent);
-      const teamsList = await theSportsDB.getTeamsByLeagueName(data.strLeague);
+      const teamsList = await DB.getTeamsByLeagueName(data.strLeague);
       for (var i in teamsList.teams) {
         teams.push(teamsList.teams[i].strTeam);
       }
@@ -143,11 +157,44 @@ client.on('message', (msg) => {
     };
     leagueTeams();
   }
-  if (command === 'lastGameStats') {
+  if (command === 'lastgamestats') {
     let teamID = checkSubscriptionStatus(msg.author.id);
-  }
-  if (msg.author.bot) {
-    msg.suppressEmbeds();
+    DB.getPast5EventsByTeamId(teamID).then((gameData) => {
+      let eventID = gameData.results[0].idEvent
+      getEventStats(eventID).then((stats) => {
+        let s = stats.eventstats;
+        if (s === null) {
+          msg.reply('Sorry, there are no previous game stats available for your team right now!')
+        } else {
+          let dataList =
+            [
+              { stat: 'Shots on goal', home: `${s[0].intHome}`, away: `${s[0].intAway}` },
+              { stat: 'Shots off goal', home: `${s[1].intHome}`, away: `${s[1].intAway}` },
+              { stat: 'Total shots', home: `${s[2].intHome}`, away: `${s[2].intAway}` },
+              { stat: 'Blocked Shots', home: `${s[3].intHome}`, away: `${s[3].intAway}` },
+              { stat: 'Shots inside box', home: `${s[4].intHome}`, away: `${s[4].intAway}` },
+              { stat: 'Shots outside box', home: `${s[5].intHome}`, away: `${s[5].intAway}` },
+              { stat: 'Fouls', home: `${s[6].intHome}`, away: `${s[6].intAway}` },
+              { stat: 'Corner kicks', home: `${s[7].intHome}`, away: `${s[7].intAway}` },
+              { stat: 'Offsides', home: `${s[8].intHome}`, away: `${s[8].intAway}` },
+              { stat: 'Ball posession', home: `${s[9].intHome}%`, away: `${s[9].intAway}%` },
+              { stat: 'Yellow cards', home: `${s[10].intHome}`, away: `${s[10].intAway}` },
+              { stat: 'Red cards', home: `${s[11].intHome}`, away: `${s[11].intAway}` },
+              { stat: 'Golakeeper saves', home: `${s[12].intHome}`, away: `${s[12].intAway}` },
+              { stat: 'Total passes', home: `${s[13].intHome}`, away: `${s[13].intAway}` },
+              { stat: 'Accurate passes', home: `${s[14].intHome} (${s[15].intHome}%)`, away: `${s[14].intAway} (${s[15].intAway}%)` },
+
+            ];
+
+          let dataTable = stringTable.create(dataList, { capitalizeHeaders: true });
+          msg.reply(
+            '\`\`\`'
+            + gameData.results[0].strHomeTeam + ' ' + gameData.results[0].intHomeScore + ' : ' + gameData.results[0].intAwayScore + ' ' + gameData.results[0].strAwayTeam + '\n'
+            + dataTable + '\`\`\`'
+          )
+        }
+      })
+    })
   }
 });
 
@@ -169,20 +216,15 @@ function checkSubscriptionStatus(userID) {
   return teamID;
 }
 
-async function last5Games(teamID) {
-  let eventsData = await theSportsDB.getPast5EventsByTeamId(teamID);
-  return eventsData.results;
-}
-
 // retrieve individual player data.
 async function retrievePlayerData(playerName) {
-  var playerData = await theSportsDB.getPlayerByName(playerName);
+  var playerData = await DB.getPlayerByName(playerName);
 }
 
 // Filters "Soccer" leagues from all other sports leagues within the API
 // and adds them to allFootballLeagues.
 async function getLeagues() {
-  var leagueList = await theSportsDB.getLeagueList();
+  var leagueList = await DB.getLeagueList();
   for (i = 0; i < leagueList.leagues.length; i++) {
     if (leagueList.leagues[i].strSport === 'Soccer') {
       allFootballLeagues.push({
@@ -206,7 +248,7 @@ async function getLeagueData(league) {
 
   for (var i in allFootballLeagues) {
     if (allFootballLeagues[i].key.toLowerCase() === bestMatch.toLowerCase()) {
-      let leagueDetails = await theSportsDB.getLeagueDetailsById(
+      let leagueDetails = await DB.getLeagueDetailsById(
         allFootballLeagues[i].value
       );
       //leagueData = leagueDetails.leagues[0].strDescriptionEN;
@@ -216,9 +258,20 @@ async function getLeagueData(league) {
   return leagueData;
 }
 
-// async function getLeagueDetails(leagueId) {
-//   var leagueDetails = await theSportsDB.getLeagueDetailsById(leagueId);
-//   console.log(leagueDetails);
-// }
+async function getEventStats(eventID) {
+  return (await axios.get(`https://www.thesportsdb.com/api/v1/json/${process.env['APIKey']}/lookupeventstats.php?id=${eventID}`
+  )).data;
+}
+
+async function getLiveScores(sport) {
+  const liveGameData = await DB.getLivescoresBySport(sport);
+
+}
+
+async function getSubLiveGame(userID) {
+  const teamID = checkSubscriptionStatus(userID);
+  const allLiveGames = DB.getSoccerLivescores()
+
+}
 
 client.login(discordToken);
