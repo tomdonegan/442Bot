@@ -27,8 +27,8 @@ client.on('message', (msg) => {
   if (command === '442commands') {
     msg.reply(
       `
-      !subscribe (Team Name) - Subscribe to a team.
-      !recentgames - Shows score data from previous 5 games. (User must be subscribed to a team.)
+      !sub (Team Name) - Subscribe to a team.
+      !results - Shows score data from previous 5 games. (User must be subscribed to a team.)
       !history (League Name) - Shows historic facts about a league.
       !team (Team Name) - Shows team data. (Stadium, Age, Social Links etc.)
       !livescores - Shows all scores from currently live games.
@@ -42,53 +42,95 @@ client.on('message', (msg) => {
     );
   }
   // Subscribes a user to a chosen team, this enables the use of team specific commands.
-  if (command === 'subscribe') {
+  if (command === 'sub') {
     try {
-      DB.getTeamByName(messageContent).then((data) => {
+      let teamData = DB.getTeamByName(messageContent);
+      teamData.then((data) => {
         subscriptions.push({
           user: msg.author.id,
           teamID: data.teams[0].idTeam
         })
         msg.reply(`You are now subscribed to ${data.teams[0].strTeam}`);
-      });
+      })
     } catch (error) {
       msg.reply('Your subscription was not successful, please try again.')
     }
-    
   }
+
   // Returns the scores of the last 5 subscribed team games.
-  if (command === 'recentgames' || command === 'nextgames' ) {
+  if (command === 'results') {
+    const teamData = DB.getTeamByName(messageContent);
+    teamData.then((data) => {
+      let teamID;
+      if (messageContent === '') {
+        teamID = checkSubscriptionStatus(msg.author.id);
+      } else {
+        teamID = data.teams[0].idTeam;
+      }
+      if (teamID === void 0) {
+        msg.reply(
+          'You are not currently subscribed to a team. Please use !subscribe (Team Name) before using !results'
+        );
+      } else {
+        let events = DB.getPast5EventsByTeamId(teamID);
+        events.then((gameData) => {
+          let gamesList = [];
+          const previousGames = gameData.results;
+          for (var i in previousGames) {
+            gamesList.push(
+              `
+              ${previousGames[i].strHomeTeam} ${previousGames[i].intHomeScore} : ${previousGames[i].intAwayScore} ${previousGames[i].strAwayTeam} (League: ${previousGames[i].strLeague})
+              `
+            );
+          }
+          msg.reply(
+            `
+              Results for the last 5 matches:
+            ${gamesList[0]} ${gamesList[1]} ${gamesList[2]} ${gamesList[3]} ${gamesList[4]}
+            `
+          );
+        })
+      }
+    })
+  }
+  //Show upcoming games
+  if (command === 'fixtures') {
+    if (messageContent === '') {
+      console.log('Empty!')
+    }
     let teamID = checkSubscriptionStatus(msg.author.id);
+    let events;
     if (teamID === void 0) {
       msg.reply(
         'You are not currently subscribed to a team. Please use !subscribe (Team Name) before using !teamgames'
       );
-    } else if (command === 'recentgames') {
-      const gameData = DB.getPast5EventsByTeamId(teamID);
     } else {
-      const gameData = DB.getNext5EventsByTeamId(teamID);
-    }
-    game.then((gameData) => {
+      events = DB.getNext5EventsByTeamId(teamID);
+      events.then((gameData) => {
         let gamesList = [];
-        const games = gameData.results;
-        for (var i in games) {
+        const upcomingGames = gameData.events;
+        console.log(upcomingGames)
+        for (var i in upcomingGames) {
           gamesList.push(
             `
-            ${games[i].strHomeTeam} ${games[i].intHomeScore} : ${games[i].intAwayScore} ${games[i].strAwayTeam} (League: ${games[i].strLeague})
+            ${upcomingGames[i].strHomeTeam} VS ${upcomingGames[i].strAwayTeam}
+            **VENUE:** ${upcomingGames[i].strVenue}
+            **LEAGUE:** ${upcomingGames[i].strLeague}
+            **ROUND:** ${upcomingGames[i].intRound}
+            **KICK OFF:** ${upcomingGames[i].strTimeLocal}(Local Time)
             `
           );
         }
+        let replyMessage = ` Fixtures for next 5 matches:\n`
+        for (var game in gamesList) {
+          replyMessage += gamesList[game]
+        }
         msg.reply(
-          `
-            Results for the last 5 matches:
-          ${gamesList[0]} ${gamesList[1]} ${gamesList[2]} ${gamesList[3]} ${gamesList[4]}
-          `
+          replyMessage
         );
-      })
+      });
     }
   }
-
-
   // Show the history of a selected league.
   if (command === 'history') {
     const historyData = async () => {
@@ -265,7 +307,6 @@ async function getEventStats(eventID) {
 
 async function getLiveScores(sport) {
   const liveGameData = await DB.getLivescoresBySport(sport);
-
 }
 
 async function getSubLiveGame(userID) {
