@@ -4,6 +4,7 @@ const stringTable = require('string-table');
 const Discord = require('discord.js');
 const DB = require('thesportsdb');
 const stringSimilarity = require('string-similarity');
+
 const client = new Discord.Client();
 const discordToken = process.env['DiscordToken'];
 const prefix = '!';
@@ -48,7 +49,7 @@ client.on('message', (msg) => {
   if (command === 'sub') {
     try {
       let teamData = DB.getTeamByName(messageContent);
-      teamData.then((data) => {
+      teamData.then((data) => {        
         subscriptions.push({
           user: msg.author.id,
           teamID: data.teams[0].idTeam
@@ -117,7 +118,6 @@ client.on('message', (msg) => {
         events.then((gameData) => {
           let gamesList = [];
           const upcomingGames = gameData.events;
-          console.log(upcomingGames)
           for (var i in upcomingGames) {
             gamesList.push(
               `
@@ -175,21 +175,33 @@ client.on('message', (msg) => {
   }
   //Live scores from all football games.
   if (command === 'livescores') {
-    DB.getSoccerLivescores().then((games) => {
-      console.log(games)
-      const liveGames = games.events;
-      let liveGameList = [];
-      let gameString = 'Current Live Scores: ';
-      for (var i in liveGames) {
-        liveGameList.push(
-          `
-            ${liveGames[i].strHomeTeam} ${liveGames[i].intHomeScore} : ${liveGames[i].intAwayScore} ${liveGames[i].strAwayTeam}  (Game Progress: ${liveGames[i].strProgress}Minutes | Match Status: ${liveGames[i].strStatus} | League: ${liveGames[i].strLeague}) 
+    DB.getLivescoresBySport('soccer').then((allScores) => {
+        const events = allScores.events;
+        let liveGameList = [];
+        let gameString = `Current Live Scores: `;
+        for (var i in events) {
+          liveGameList.push(
             `
-        );
-        gameString += liveGameList[i];
-      }
-      msg.reply(`${gameString}`);
-    })
+            ${events[i].strHomeTeam} ${events[i].intHomeScore} : ${events[i].intAwayScore} ${events[i].strAwayTeam}  (Game Progress: ${events[i].strProgress}Minutes | Match Status: ${events[i].strStatus} | League: ${events[i].strLeague}) 
+            `
+          );
+          gameString += liveGameList[i];
+        }
+        if (messageContent.length > 1) {
+          liveGameList.forEach((game) => {
+            if (game.toLowerCase().includes(messageContent)) {
+              msg.reply(game.toString())
+            } else {
+              gameString = `There is currently no live game data for ${messageContent}`
+            }
+          });
+          
+        } else if (messageContent === '') {
+          msg.reply(`${gameString}`, { split: true });
+        } else {
+          msg.reply(`There is currently no live score data for ${messageContent}.`)
+        }
+    });
   }
   // Returns a list of teams currently playing in the selected league
   if (command === 'leagueteams') {
@@ -274,10 +286,9 @@ function similarityCheck(input, dataList) {
 
 //Retrives the ID of a team if a player is subscribed.
 function checkSubscriptionStatus(userID) {
-  let teamID;
   for (var i in subscriptions) {
     if (subscriptions[i].user === userID) {
-      teamID = subscriptions[i].teamID;
+      let teamID = subscriptions[i].teamID;
     }
   }
   return teamID;
