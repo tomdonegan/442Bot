@@ -4,7 +4,9 @@ const stringTable = require('string-table');
 const Discord = require('discord.js');
 const DB = require('thesportsdb');
 const stringSimilarity = require('string-similarity');
+const Database = require("@replit/database")
 
+const subDB = new Database()
 const client = new Discord.Client();
 const discordToken = process.env['DiscordToken'];
 const prefix = '!';
@@ -50,10 +52,7 @@ client.on('message', (msg) => {
     try {
       let teamData = DB.getTeamByName(messageContent);
       teamData.then((data) => {
-        subscriptions.push({
-          user: msg.author.id,
-          teamID: data.teams[0].idTeam
-        })
+        subDB.set(msg.author.id, data.teams[0].idTeam);
         msg.reply(`You are now subscribed to ${data.teams[0].strTeam}`);
       })
     } catch (error) {
@@ -65,36 +64,38 @@ client.on('message', (msg) => {
   if (command === 'results') {
     const teamData = DB.getTeamByName(messageContent);
     teamData.then((data) => {
-      let teamID;
-      if (messageContent === '') {
-        teamID = checkSubscriptionStatus(msg.author.id);
-      } else {
-        teamID = data.teams[0].idTeam;
-      }
-      if (teamID === void 0) {
-        msg.reply(
-          'You are not currently subscribed to a team. Please use !subscribe (Team Name) before using !results'
-        );
-      } else {
-        let events = DB.getPast5EventsByTeamId(teamID);
-        events.then((gameData) => {
-          let gamesList = [];
-          const previousGames = gameData.results;
-          for (var i in previousGames) {
-            gamesList.push(
+      subDB.get(msg.author.id).then(subscribedTeam => {
+        let teamID;
+        if (messageContent === '') {
+          teamID = subscribedTeam;
+        } else {
+          teamID = data.teams[0].idTeam;
+        }
+        if (teamID === void 0) {
+          msg.reply(
+            'You are not currently subscribed to a team. Please use !subscribe (Team Name) before using !results'
+          );
+        } else {
+          let events = DB.getPast5EventsByTeamId(teamID);
+          events.then((gameData) => {
+            let gamesList = [];
+            const previousGames = gameData.results;
+            for (var i in previousGames) {
+              gamesList.push(
+                `
+                ${previousGames[i].strHomeTeam} ${previousGames[i].intHomeScore} : ${previousGames[i].intAwayScore} ${previousGames[i].strAwayTeam} (League: ${previousGames[i].strLeague})
+                `
+              );
+            }
+            msg.reply(
               `
-              ${previousGames[i].strHomeTeam} ${previousGames[i].intHomeScore} : ${previousGames[i].intAwayScore} ${previousGames[i].strAwayTeam} (League: ${previousGames[i].strLeague})
+                Results for the last 5 matches:
+              ${gamesList[0]} ${gamesList[1]} ${gamesList[2]} ${gamesList[3]} ${gamesList[4]}
               `
             );
-          }
-          msg.reply(
-            `
-              Results for the last 5 matches:
-            ${gamesList[0]} ${gamesList[1]} ${gamesList[2]} ${gamesList[3]} ${gamesList[4]}
-            `
-          );
-        })
-      }
+          })
+        }
+      });
     })
   }
 
@@ -103,42 +104,45 @@ client.on('message', (msg) => {
     let teamID;
     const teamData = DB.getTeamByName(messageContent);
     teamData.then((data) => {
-      if (messageContent === '') {
-        teamID = checkSubscriptionStatus(msg.author.id);
-      } else {
-        teamID = data.teams[0].idTeam;
-      }
-      let events;
-      if (teamID === void 0) {
-        msg.reply(
-          `
-          You are not currently subscribed to a team. Please use !sub (Team Name) to use !teamgames without a team choice.
-          To use !fixtures for any team, please supply a team name after the command: !fixtures (Team Name).
-          `
-        );
-      } else {
-        events = DB.getNext5EventsByTeamId(teamID);
-        events.then((gameData) => {
-          let gamesList = [];
-          const upcomingGames = gameData.events;
-          for (var i in upcomingGames) {
-            gamesList.push(
-              `
-              ${upcomingGames[i].strHomeTeam} VS ${upcomingGames[i].strAwayTeam}
-              **VENUE:** ${upcomingGames[i].strVenue}
-              **LEAGUE:** ${upcomingGames[i].strLeague}
-              **ROUND:** ${upcomingGames[i].intRound}
-              **KICK OFF:** ${upcomingGames[i].strTimeLocal}(Local Time)
-              `
-            );
-          }
-          let replyMessage = ` Upcoming Matches:\n`
-          for (var game in gamesList) {
-            replyMessage += gamesList[game]
-          }
-          msg.reply(replyMessage);
-        });
-      }
+      subDB.get(msg.author.id).then(subscribedTeam => {
+        if (messageContent === '') {
+          teamID = subscribedTeam;
+          console.log(teamID)
+        } else {
+          teamID = data.teams[0].idTeam;
+        }
+        let events;
+        if (teamID === null) {
+          msg.reply(
+            `
+            You are not currently subscribed to a team. Please use !sub (Team Name) to use !teamgames without a team choice.
+            To use !fixtures for any team, please supply a team name after the command: !fixtures (Team Name).
+            `
+          );
+        } else {
+          events = DB.getNext5EventsByTeamId(teamID);
+          events.then((gameData) => {
+            let gamesList = [];
+            const upcomingGames = gameData.events;
+            for (var i in upcomingGames) {
+              gamesList.push(
+                `
+                ${upcomingGames[i].strHomeTeam} VS ${upcomingGames[i].strAwayTeam}
+                **VENUE:** ${upcomingGames[i].strVenue}
+                **LEAGUE:** ${upcomingGames[i].strLeague}
+                **ROUND:** ${upcomingGames[i].intRound}
+                **KICK OFF:** ${upcomingGames[i].strTimeLocal}(Local Time)
+                `
+              );
+            }
+            let replyMessage = ` Upcoming Matches:\n`
+            for (var game in gamesList) {
+              replyMessage += gamesList[game]
+            }
+            msg.reply(replyMessage);
+          });
+        }
+      });
     });
   }
   // Show the history of a selected league.
@@ -229,53 +233,55 @@ client.on('message', (msg) => {
   if (command === 'gamestats') {
     const teamData = DB.getTeamByName(messageContent);
     teamData.then((data) => {
-      let teamID;
-      if (messageContent === '') {
-        teamID = checkSubscriptionStatus(msg.author.id);
-      } else {
-        teamID = data.teams[0].idTeam;
-      }
-      if (teamID === void 0) {
-        msg.reply('You are not currently subscribed to a team. Please subscribe to a team or enter a team name after the !gamestats command.');
-        ;
-      } else {
-        DB.getPast5EventsByTeamId(teamID).then((gameData) => {
-          let eventID = gameData.results[0].idEvent
-          getEventStats(eventID).then((stats) => {
-            let s = stats.eventstats;
-            if (s === null) {
-              msg.reply('Sorry, there are no previous game stats available for your team right now!')
-            } else {
-              let dataList =
-                [
-                  { stat: 'Shots on goal', home: `${s[0].intHome}`, away: `${s[0].intAway}` },
-                  { stat: 'Shots off goal', home: `${s[1].intHome}`, away: `${s[1].intAway}` },
-                  { stat: 'Total shots', home: `${s[2].intHome}`, away: `${s[2].intAway}` },
-                  { stat: 'Blocked Shots', home: `${s[3].intHome}`, away: `${s[3].intAway}` },
-                  { stat: 'Shots inside box', home: `${s[4].intHome}`, away: `${s[4].intAway}` },
-                  { stat: 'Shots outside box', home: `${s[5].intHome}`, away: `${s[5].intAway}` },
-                  { stat: 'Fouls', home: `${s[6].intHome}`, away: `${s[6].intAway}` },
-                  { stat: 'Corner kicks', home: `${s[7].intHome}`, away: `${s[7].intAway}` },
-                  { stat: 'Offsides', home: `${s[8].intHome}`, away: `${s[8].intAway}` },
-                  { stat: 'Ball posession', home: `${s[9].intHome}%`, away: `${s[9].intAway}%` },
-                  { stat: 'Yellow cards', home: `${s[10].intHome}`, away: `${s[10].intAway}` },
-                  { stat: 'Red cards', home: `${s[11].intHome}`, away: `${s[11].intAway}` },
-                  { stat: 'Golakeeper saves', home: `${s[12].intHome}`, away: `${s[12].intAway}` },
-                  { stat: 'Total passes', home: `${s[13].intHome}`, away: `${s[13].intAway}` },
-                  { stat: 'Accurate passes', home: `${s[14].intHome} (${s[15].intHome}%)`, away: `${s[14].intAway} (${s[15].intAway}%)` },
+      subDB.get(msg.author.id).then(subscribedTeam => {
+        let teamID;
+        if (messageContent === '') {
+          teamID = subscribedTeam;
+        } else {
+          teamID = data.teams[0].idTeam;
+        }
+        if (teamID === null) {
+          msg.reply('You are not currently subscribed to a team. Please subscribe to a team or enter a team name after the !gamestats command.');
+          ;
+        } else {
+          DB.getPast5EventsByTeamId(teamID).then((gameData) => {
+            let eventID = gameData.results[0].idEvent
+            getEventStats(eventID).then((stats) => {
+              let s = stats.eventstats;
+              if (s === null) {
+                msg.reply('Sorry, there are no previous game stats available for your team right now!')
+              } else {
+                let dataList =
+                  [
+                    { stat: 'Shots on goal', home: `${s[0].intHome}`, away: `${s[0].intAway}` },
+                    { stat: 'Shots off goal', home: `${s[1].intHome}`, away: `${s[1].intAway}` },
+                    { stat: 'Total shots', home: `${s[2].intHome}`, away: `${s[2].intAway}` },
+                    { stat: 'Blocked Shots', home: `${s[3].intHome}`, away: `${s[3].intAway}` },
+                    { stat: 'Shots inside box', home: `${s[4].intHome}`, away: `${s[4].intAway}` },
+                    { stat: 'Shots outside box', home: `${s[5].intHome}`, away: `${s[5].intAway}` },
+                    { stat: 'Fouls', home: `${s[6].intHome}`, away: `${s[6].intAway}` },
+                    { stat: 'Corner kicks', home: `${s[7].intHome}`, away: `${s[7].intAway}` },
+                    { stat: 'Offsides', home: `${s[8].intHome}`, away: `${s[8].intAway}` },
+                    { stat: 'Ball posession', home: `${s[9].intHome}%`, away: `${s[9].intAway}%` },
+                    { stat: 'Yellow cards', home: `${s[10].intHome}`, away: `${s[10].intAway}` },
+                    { stat: 'Red cards', home: `${s[11].intHome}`, away: `${s[11].intAway}` },
+                    { stat: 'Golakeeper saves', home: `${s[12].intHome}`, away: `${s[12].intAway}` },
+                    { stat: 'Total passes', home: `${s[13].intHome}`, away: `${s[13].intAway}` },
+                    { stat: 'Accurate passes', home: `${s[14].intHome} (${s[15].intHome}%)`, away: `${s[14].intAway} (${s[15].intAway}%)` },
 
-                ];
-              // Creates a "string table" from the above list, formatted for Discord.
-              let dataTable = stringTable.create(dataList, { capitalizeHeaders: true });
-              msg.reply(
-                '\`\`\`'
-                + gameData.results[0].strHomeTeam + ' ' + gameData.results[0].intHomeScore + ' : ' + gameData.results[0].intAwayScore + ' ' + gameData.results[0].strAwayTeam + '\n'
-                + dataTable + '\`\`\`'
-              )
-            }
+                  ];
+                // Creates a "string table" from the above list, formatted for Discord.
+                let dataTable = stringTable.create(dataList, { capitalizeHeaders: true });
+                msg.reply(
+                  '\`\`\`'
+                  + gameData.results[0].strHomeTeam + ' ' + gameData.results[0].intHomeScore + ' : ' + gameData.results[0].intAwayScore + ' ' + gameData.results[0].strAwayTeam + '\n'
+                  + dataTable + '\`\`\`'
+                )
+              }
+            });
           });
-        });
-      }
+        }
+      });
     });
   }
 });
