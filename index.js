@@ -111,7 +111,10 @@ client.on('message', (msg) => {
       let events;
       if (teamID === void 0) {
         msg.reply(
-          'You are not currently subscribed to a team. Please use !subscribe (Team Name) before using !teamgames'
+          `
+          You are not currently subscribed to a team. Please use !sub (Team Name) to use !teamgames without a team choice.
+          To use !fixtures for any team, please supply a team name after the command: !fixtures (Team Name).
+          `
         );
       } else {
         events = DB.getNext5EventsByTeamId(teamID);
