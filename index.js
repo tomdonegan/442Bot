@@ -49,7 +49,7 @@ client.on('message', (msg) => {
   if (command === 'sub') {
     try {
       let teamData = DB.getTeamByName(messageContent);
-      teamData.then((data) => {        
+      teamData.then((data) => {
         subscriptions.push({
           user: msg.author.id,
           teamID: data.teams[0].idTeam
@@ -100,14 +100,14 @@ client.on('message', (msg) => {
 
   //Show upcoming games. Maximum of 5 games shown.
   if (command === 'fixtures') {
-    const teamData = DB.getTeamByName(messageContent);
     let teamID;
+    const teamData = DB.getTeamByName(messageContent);
     teamData.then((data) => {
       if (messageContent === '') {
         teamID = checkSubscriptionStatus(msg.author.id);
       } else {
         teamID = data.teams[0].idTeam;
-      }      
+      }
       let events;
       if (teamID === void 0) {
         msg.reply(
@@ -133,9 +133,7 @@ client.on('message', (msg) => {
           for (var game in gamesList) {
             replyMessage += gamesList[game]
           }
-          msg.reply(
-            replyMessage
-          );
+          msg.reply(replyMessage);
         });
       }
     });
@@ -155,52 +153,55 @@ client.on('message', (msg) => {
   // Returns team data (Age, League, Social Links)
   if (command === 'team') {
     let team = async () => {
-      let data = await DB.getTeamByName(messageContent);
-      msg.reply(
-        `
-        ${data.teams[0].strAlternate} team info:\n
-        Current League: ${data.teams[0].strLeague}\n
-        Year Formed: ${data.teams[0].intFormedYear}\n
-        Stadium: ${data.teams[0].strStadium}\n
-        Stadium Location: ${data.teams[0].strStadiumLocation}\n
-        Website: http://${data.teams[0].strWebsite}\n
-        Facebook: http://${data.teams[0].strFacebook}\n
-        Twitter: http://${data.teams[0].strTwitter}\n
-        Instagram: http://${data.teams[0].strInstagram}\n
-        Team Badge: ${data.teams[0].strTeamBadge}`
-      );
-      msg.suppressEmbeds(true)
+      try {
+        let data = await DB.getTeamByName(messageContent);
+        const teamBadge = data.teams[0].strTeamBadge;
+        msg.reply(
+          `
+          ${data.teams[0].strTeam} team info:\n
+          Current League: ${data.teams[0].strLeague}\n
+          Year Formed: ${data.teams[0].intFormedYear}\n
+          Stadium: ${data.teams[0].strStadium}\n
+          Stadium Location: ${data.teams[0].strStadiumLocation}\n
+          Website: <http://${data.teams[0].strWebsite}>\n
+          Facebook: <http://${data.teams[0].strFacebook}>\n
+          Twitter: <http://${data.teams[0].strTwitter}>\n
+          Instagram: <http://${data.teams[0].strInstagram}>\n`,
+          { files: [teamBadge] }
+        );
+      } catch (e) {
+        msg.reply(`Sorry there is currently no team data available for ${messageContent}.`)
+      }
     };
     team();
   }
-  //Live scores from all football games.
+  //Get data for all live games or a team specific live game.
   if (command === 'livescores') {
     DB.getLivescoresBySport('soccer').then((allScores) => {
-        const events = allScores.events;
-        let liveGameList = [];
-        let gameString = `Current Live Scores: `;
-        for (var i in events) {
-          liveGameList.push(
-            `
+      const events = allScores.events;
+      let liveGameList = [];
+      let gameString = `Current Live Scores: `;
+      for (var i in events) {
+        liveGameList.push(
+          `
             ${events[i].strHomeTeam} ${events[i].intHomeScore} : ${events[i].intAwayScore} ${events[i].strAwayTeam}  (Game Progress: ${events[i].strProgress}Minutes | Match Status: ${events[i].strStatus} | League: ${events[i].strLeague}) 
             `
-          );
-          gameString += liveGameList[i];
-        }
-        if (messageContent.length > 1) {
-          liveGameList.forEach((game) => {
-            if (game.toLowerCase().includes(messageContent)) {
-              msg.reply(game.toString())
-            } else {
-              gameString = `There is currently no live game data for ${messageContent}`
-            }
-          });
-          
-        } else if (messageContent === '') {
-          msg.reply(`${gameString}`, { split: true });
-        } else {
-          msg.reply(`There is currently no live score data for ${messageContent}.`)
-        }
+        );
+        gameString += liveGameList[i];
+      };
+      if (liveGameList.length == 0) {
+        msg.reply(`There are currently no live games.`);
+      } else if (messageContent.length > 1) {
+        for (var i in liveGameList) {
+          if (liveGameList[i].toLowerCase().includes(messageContent)) {
+            msg.reply(liveGameList[i].toString())
+          } else {
+            msg.reply(`There is currently no live score data for ${messageContent}.`)
+          }
+        };
+      } else {
+        msg.reply(`${gameString}`, { split: true });
+      }
     });
   }
   // Returns a list of teams currently playing in the selected league
@@ -220,7 +221,7 @@ client.on('message', (msg) => {
     };
     leagueTeams();
   }
-  
+
   // If available previous game stats will be shown for subbed or selected team.
   if (command === 'gamestats') {
     const teamData = DB.getTeamByName(messageContent);
@@ -286,9 +287,10 @@ function similarityCheck(input, dataList) {
 
 //Retrives the ID of a team if a player is subscribed.
 function checkSubscriptionStatus(userID) {
+  let teamID;
   for (var i in subscriptions) {
     if (subscriptions[i].user === userID) {
-      let teamID = subscriptions[i].teamID;
+      teamID = subscriptions[i].teamID;
     }
   }
   return teamID;
