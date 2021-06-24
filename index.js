@@ -213,7 +213,7 @@ client.on('message', (msg) => {
           }
         };
       } else {
-        msg.reply(`${gameString}`, { split: true });
+        msg.channel.send(embedCreation('Current Live Games:',`${gameString}`));
       }
     });
   }
