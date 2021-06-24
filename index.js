@@ -1,16 +1,22 @@
 require('console-stamp')(console, '[HH:MM:ss.l]');
 const axios = require('axios');
 const stringTable = require('string-table');
-const Discord = require('discord.js');
+const { Client, MessageEmbed } = require('discord.js');
 const DB = require('thesportsdb');
 const stringSimilarity = require('string-similarity');
-const Database = require("@replit/database")
+const Database = require("@replit/database");
 
-const subDB = new Database()
-const client = new Discord.Client();
+
+const subDB = new Database();
+const client = new Client();
 const discordToken = process.env['DiscordToken'];
 const prefix = '!';
 DB.setApiKey(process.env['APIKey']);
+
+//----------
+
+
+//----------
 
 let subscriptions = [{ user: 0, teamID: 0 }];
 let allFootballLeagues = [];
@@ -33,7 +39,7 @@ client.on('message', (msg) => {
       !sub (Team Name) - Subscribe to a team.
       !results (Team Name) - Shows score data from previous 5 games.
       !history (League Name) - Shows historic facts about a league.
-      !team (Team Name) - Shows team data. (Stadium, Age, Social Links etc.)
+      !teamdata (Team Name) - Shows team data. (Stadium, Age, Social Links etc.)
       !livescores - Shows all scores from currently live games.
       !leagueteams (League) - Returns a list of all teams playing in the selected league.
       !gamestats (Team Name) - If available, returns stats for previous game. 
@@ -52,11 +58,17 @@ client.on('message', (msg) => {
     try {
       let teamData = DB.getTeamByName(messageContent);
       teamData.then((data) => {
-        subDB.set(msg.author.id, data.teams[0].idTeam);
-        msg.reply(`You are now subscribed to ${data.teams[0].strTeam}`);
+        if (data.teams == null) {
+          msg.channel.send(embedCreation('Subscription Unsuccessful!', 'Team not available in the database.'));
+        } else {
+        //Adds user id and team id to the team subscription database.
+          subDB.set(msg.author.id, data.teams[0].idTeam);
+          const successMessage = `${msg.author.username}, you are now subscribed to ${data.teams[0].strTeam}.`
+          msg.channel.send(embedCreation('Subscription Successful', successMessage));
+        }
       })
     } catch (error) {
-      msg.reply('Your subscription was not successful, please try again.')
+      msg.channel.send('Subscription Error', 'Sorry we could not subscribe you to that team, please try again.')
     }
   }
 
@@ -107,7 +119,6 @@ client.on('message', (msg) => {
       subDB.get(msg.author.id).then(subscribedTeam => {
         if (messageContent === '') {
           teamID = subscribedTeam;
-          console.log(teamID)
         } else {
           teamID = data.teams[0].idTeam;
         }
@@ -122,24 +133,27 @@ client.on('message', (msg) => {
         } else {
           events = DB.getNext5EventsByTeamId(teamID);
           events.then((gameData) => {
-            let gamesList = [];
-            const upcomingGames = gameData.events;
-            for (var i in upcomingGames) {
-              gamesList.push(
-                `
-                ${upcomingGames[i].strHomeTeam} VS ${upcomingGames[i].strAwayTeam}
-                **VENUE:** ${upcomingGames[i].strVenue}
-                **LEAGUE:** ${upcomingGames[i].strLeague}
-                **ROUND:** ${upcomingGames[i].intRound}
-                **KICK OFF:** ${upcomingGames[i].strTimeLocal}(Local Time)
-                `
-              );
-            }
-            let replyMessage = ` Upcoming Matches:\n`
-            for (var game in gamesList) {
-              replyMessage += gamesList[game]
-            }
-            msg.reply(replyMessage);
+              let gamesList = [];
+              const upcomingGames = gameData.events;
+              if (upcomingGames.length)
+                for (var i in upcomingGames) {
+                  gamesList.push(
+                    `
+                    ${upcomingGames[i].strHomeTeam} VS ${upcomingGames[i].strAwayTeam}
+                    **VENUE:** ${upcomingGames[i].strVenue}
+                    **LEAGUE:** ${upcomingGames[i].strLeague}
+                    **ROUND:** ${upcomingGames[i].intRound}
+                    **DATE:** ${upcomingGames[i].dateEvent}
+                    **KICK OFF:** ${upcomingGames[i].strTimeLocal}(Local Time)
+                    `
+                  );
+                }
+
+              let fixturesMessage = '';
+              for (var game in gamesList) {
+                fixturesMessage += gamesList[game]
+              }
+              msg.channel.send(embedCreation('Upcoming Matches...', fixturesMessage))
           });
         }
       });
@@ -158,29 +172,31 @@ client.on('message', (msg) => {
     historyData();
   }
   // Returns team data (Age, League, Social Links)
-  if (command === 'team') {
-    let team = async () => {
-      try {
-        let data = await DB.getTeamByName(messageContent);
+  if (command === 'teamdata') {
+    //let team = async () => {
+    try {
+      let teamData = DB.getTeamByName(messageContent);
+      teamData.then((data) => {
         const teamBadge = data.teams[0].strTeamBadge;
         msg.reply(
           `
-          ${data.teams[0].strTeam} team info:\n
-          Current League: ${data.teams[0].strLeague}\n
-          Year Formed: ${data.teams[0].intFormedYear}\n
-          Stadium: ${data.teams[0].strStadium}\n
-          Stadium Location: ${data.teams[0].strStadiumLocation}\n
-          Website: <http://${data.teams[0].strWebsite}>\n
-          Facebook: <http://${data.teams[0].strFacebook}>\n
-          Twitter: <http://${data.teams[0].strTwitter}>\n
-          Instagram: <http://${data.teams[0].strInstagram}>\n`,
+            ${data.teams[0].strTeam} team info:\n
+            Current League: ${data.teams[0].strLeague}\n
+            Year Formed: ${data.teams[0].intFormedYear}\n
+            Stadium: ${data.teams[0].strStadium}\n
+            Stadium Location: ${data.teams[0].strStadiumLocation}\n
+            Website: <http://${data.teams[0].strWebsite}>\n
+            Facebook: <http://${data.teams[0].strFacebook}>\n
+            Twitter: <http://${data.teams[0].strTwitter}>\n
+            Instagram: <http://${data.teams[0].strInstagram}>\n`,
           { files: [teamBadge] }
         );
-      } catch (e) {
-        msg.reply(`Sorry there is currently no team data available for ${messageContent}.`)
-      }
-    };
-    team();
+      });
+    } catch (e) {
+      msg.reply(`Sorry there is currently no team data available for ${messageContent}.`)
+    }
+    // };
+    // team();
   }
   //Get data for all live games or a team specific live game.
   if (command === 'livescores') {
@@ -203,11 +219,14 @@ client.on('message', (msg) => {
           if (liveGameList[i].toLowerCase().includes(messageContent)) {
             msg.reply(liveGameList[i].toString())
           } else {
-            msg.reply(`There is currently no live score data for ${messageContent}.`)
+          msg.reply(`${messageContent} are not currently playing. Here are their next games..`);
+          msg.channel.send(`!fixtures ${messageContent}`)
+          return
           }
         };
       } else {
         msg.reply(`${gameString}`, { split: true });
+        //msg.delete({ timeout: 1000 });
       }
     });
   }
@@ -220,11 +239,16 @@ client.on('message', (msg) => {
       for (var i in teamsList.teams) {
         teams.push(teamsList.teams[i].strTeam);
       }
-      msg.reply(
-        `The teams playing in the ${data.strLeague} this season are:
-        ${teams.toString()}`,
-        { split: true }
-      );
+      leagueTeamsEmbed = new MessageEmbed()
+        .setTitle(`${data.strLeague} teams. (Season: ${data.strCurrentSeason})`)
+        .setColor(0xff0000)
+        .setDescription(`${teams.toString()}`)
+      msg.channel.send(leagueTeamsEmbed);
+      // msg.reply(
+      //   `The teams playing in the ${data.strLeague} this season are:
+      //   ${teams.toString()}`,
+      //   { split: true }
+      // );
     };
     leagueTeams();
   }
@@ -272,11 +296,11 @@ client.on('message', (msg) => {
                   ];
                 // Creates a "string table" from the above list, formatted for Discord.
                 let dataTable = stringTable.create(dataList, { capitalizeHeaders: true });
-                msg.reply(
-                  '\`\`\`'
-                  + gameData.results[0].strHomeTeam + ' ' + gameData.results[0].intHomeScore + ' : ' + gameData.results[0].intAwayScore + ' ' + gameData.results[0].strAwayTeam + '\n'
-                  + dataTable + '\`\`\`'
-                )
+                const statsEmbed = new MessageEmbed()
+                  .setTitle(`${gameData.results[0].strHomeTeam} ${gameData.results[0].intHomeScore} : ${gameData.results[0].intAwayScore} ${gameData.results[0].strAwayTeam}`)
+                  .setColor(0xff0000)
+                  .setDescription(`\`\`\`${dataTable}\`\`\``)
+                msg.channel.send(statsEmbed);
               }
             });
           });
@@ -285,6 +309,14 @@ client.on('message', (msg) => {
     });
   }
 });
+
+function embedCreation(title, body) {
+  const embed = new MessageEmbed()
+    .setTitle(title)
+    .setColor(0xff0000)
+    .setDescription(body)
+  return embed
+}
 
 // As a users input may not be a 100% match to the value stored within the API
 // this function takes the users input and matches it with the most likely correct data.
