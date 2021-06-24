@@ -13,10 +13,6 @@ const discordToken = process.env['DiscordToken'];
 const prefix = '!';
 DB.setApiKey(process.env['APIKey']);
 
-//----------
-
-
-//----------
 
 let subscriptions = [{ user: 0, teamID: 0 }];
 let allFootballLeagues = [];
@@ -40,7 +36,7 @@ client.on('message', (msg) => {
       !results (Team Name) - Shows score data from previous 5 games.
       !history (League Name) - Shows historic facts about a league.
       !teamdata (Team Name) - Shows team data. (Stadium, Age, Social Links etc.)
-      !livescores - Shows all scores from currently live games.
+      !livescores - Shows all scores from currently live games. (Can be used with a team name.)
       !leagueteams (League) - Returns a list of all teams playing in the selected league.
       !gamestats (Team Name) - If available, returns stats for previous game. 
       !fixtures (Team Name) - Returns upcoming games for selected team.
@@ -83,6 +79,7 @@ client.on('message', (msg) => {
         } else {
           if (data.teams == null) {
             msg.channel.send(embedCreation('Missing Results', `No previous game data available for ${messageContent}.`));
+            return
           } else {
             teamID = data.teams[0].idTeam;
           }
@@ -134,7 +131,7 @@ client.on('message', (msg) => {
               for (var i in upcomingGames) {
                 gamesList.push(
                   `
-                    ${upcomingGames[i].strHomeTeam} VS ${upcomingGames[i].strAwayTeam}
+                    **${upcomingGames[i].strHomeTeam} VS ${upcomingGames[i].strAwayTeam}**
                     **VENUE:** ${upcomingGames[i].strVenue}
                     **LEAGUE:** ${upcomingGames[i].strLeague}
                     **ROUND:** ${upcomingGames[i].intRound}
@@ -175,7 +172,7 @@ client.on('message', (msg) => {
           msg.channel.send(embedCreation('We\'re missing something here!!',`Sorry there is currently no team data available for ${messageContent}.`));
         } else {
           const teamBadge = data.teams[0].strTeamBadge;
-          msg.channel.send(embedCreation(`${data.teams[0].strTeam} team info:`, `Current League: ${data.teams[0].strLeague}\n
+          msg.channel.send(embedCreation(`${data.teams[0].strTeam} Team Info:`, `Current League: ${data.teams[0].strLeague}\n
             Year Formed: ${data.teams[0].intFormedYear}\n
             Stadium: ${data.teams[0].strStadium}\n
             Stadium Location: ${data.teams[0].strStadiumLocation}\n
@@ -204,20 +201,19 @@ client.on('message', (msg) => {
         gameString += liveGameList[i];
       };
       if (liveGameList.length == 0) {
-        msg.channel.send(embedCreation('All players are being lazy', `There are currently no live games.`));
+        msg.channel.send(embedCreation('All players are being lazy...', `There are currently no live games.`));
       } else if (messageContent.length > 1) {
         for (var i in liveGameList) {
           if (liveGameList[i].toLowerCase().includes(messageContent)) {
             msg.channel.send(embedCreation('Current Live Games:', liveGameList[i].toString()))
           } else {
-            msg.reply(`${messageContent} are not currently playing. Here are their next games..`);
-            msg.channel.send(`!fixtures ${messageContent}`)
+            msg.channel.send(embedCreation('Current Live Games:',`${messageContent} are not currently playing. Here are their next games..`));
+            msg.channel.send(`!fixtures ${messageContent}`);            
             return
           }
         };
       } else {
         msg.reply(`${gameString}`, { split: true });
-        //msg.delete({ timeout: 1000 });
       }
     });
   }
@@ -228,18 +224,13 @@ client.on('message', (msg) => {
       const data = await getLeagueData(messageContent);
       const teamsList = await DB.getTeamsByLeagueName(data.strLeague);
       for (var i in teamsList.teams) {
-        teams.push(teamsList.teams[i].strTeam);
+        teams.push(' ' + teamsList.teams[i].strTeam);
       }
       leagueTeamsEmbed = new MessageEmbed()
         .setTitle(`${data.strLeague} teams. (Season: ${data.strCurrentSeason})`)
         .setColor(0xff0000)
         .setDescription(`${teams.toString()}`)
       msg.channel.send(leagueTeamsEmbed);
-      // msg.reply(
-      //   `The teams playing in the ${data.strLeague} this season are:
-      //   ${teams.toString()}`,
-      //   { split: true }
-      // );
     };
     leagueTeams();
   }
