@@ -247,8 +247,7 @@ client.on('message', (msg) => {
           teamID = data.teams[0].idTeam;
         }
         if (teamID === null) {
-          msg.reply('You are not currently subscribed to a team. Please subscribe to a team or enter a team name after the !gamestats command.');
-          ;
+          msg.channel.send(embedCreation('Missing Subscription', 'Please subscribe to a team or enter a team name after the !gamestats command.'));
         } else {
           DB.getPast5EventsByTeamId(teamID).then((gameData) => {
             let eventID = gameData.results[0].idEvent
