@@ -34,7 +34,7 @@ client.on('message', (msg) => {
 
   // List all available commands.
   if (command === '442commands') {
-    msg.reply(
+    msg.channel.send(embedCreation('Here are my commands...',
       `
       !sub (Team Name) - Subscribe to a team.
       !results (Team Name) - Shows score data from previous 5 games.
@@ -51,7 +51,7 @@ client.on('message', (msg) => {
       // !nextgame
       // !leaguetable
       // !clubnews
-    );
+    ));
   }
   // Subscribes a user to a chosen team, this enables the use of team specific commands.
   if (command === 'sub') {
@@ -61,14 +61,14 @@ client.on('message', (msg) => {
         if (data.teams == null) {
           msg.channel.send(embedCreation('Subscription Unsuccessful!', 'Team not available in the database.'));
         } else {
-        //Adds user id and team id to the team subscription database.
+          //Adds user id and team id to the team subscription database.
           subDB.set(msg.author.id, data.teams[0].idTeam);
           const successMessage = `${msg.author.username}, you are now subscribed to ${data.teams[0].strTeam}.`
           msg.channel.send(embedCreation('Subscription Successful', successMessage));
         }
       })
     } catch (error) {
-      msg.channel.send('Subscription Error', 'Sorry we could not subscribe you to that team, please try again.')
+      msg.channel.send('Subscription Error', 'Sorry we could not subscribe you to that team, please try again.');
     }
   }
 
@@ -81,12 +81,14 @@ client.on('message', (msg) => {
         if (messageContent === '') {
           teamID = subscribedTeam;
         } else {
-          teamID = data.teams[0].idTeam;
+          if (data.teams == null) {
+            msg.channel.send(embedCreation('Missing Results', `No previous game data available for ${messageContent}.`));
+          } else {
+            teamID = data.teams[0].idTeam;
+          }
         }
         if (teamID === void 0) {
-          msg.reply(
-            'You are not currently subscribed to a team. Please use !subscribe (Team Name) before using !results'
-          );
+          msg.channel.send(embedCreation('Missing Subscription', 'You are not currently subscribed to a team. Please use !subscribe (Team Name) before using !results'));
         } else {
           let events = DB.getPast5EventsByTeamId(teamID);
           events.then((gameData) => {
@@ -99,13 +101,8 @@ client.on('message', (msg) => {
                 `
               );
             }
-            msg.reply(
-              `
-                Results for the last 5 matches:
-              ${gamesList[0]} ${gamesList[1]} ${gamesList[2]} ${gamesList[3]} ${gamesList[4]}
-              `
-            );
-          })
+            msg.channel.send(embedCreation('Last 5 Match Results:', `${gamesList[0]} ${gamesList[1]} ${gamesList[2]} ${gamesList[3]} ${gamesList[4]}`))
+          });
         }
       });
     })
@@ -117,28 +114,26 @@ client.on('message', (msg) => {
     const teamData = DB.getTeamByName(messageContent);
     teamData.then((data) => {
       subDB.get(msg.author.id).then(subscribedTeam => {
-        if (messageContent === '') {
-          teamID = subscribedTeam;
+        if (data.teams == null) {
+          msg.channel.send(embedCreation('Fixtures Unavailable', `Sorry, I don't have any upcoming games for ${messageContent}`))
         } else {
-          teamID = data.teams[0].idTeam;
-        }
-        let events;
-        if (teamID === null) {
-          msg.reply(
-            `
-            You are not currently subscribed to a team. Please use !sub (Team Name) to use !teamgames without a team choice.
-            To use !fixtures for any team, please supply a team name after the command: !fixtures (Team Name).
-            `
-          );
-        } else {
-          events = DB.getNext5EventsByTeamId(teamID);
-          events.then((gameData) => {
+          if (messageContent === '') {
+            teamID = subscribedTeam;
+          } else {
+            teamID = data.teams[0].idTeam;
+          }
+          let events;
+          if (teamID === null) {
+            msg.channel.send(embedCreation('Missing Subscription', `You are not currently subscribed to a team. Please use !sub (Team Name) to use !teamgames without a team choice.
+              To use !fixtures for any team, please supply a team name after the command: !fixtures (Team Name).`));
+          } else {
+            events = DB.getNext5EventsByTeamId(teamID);
+            events.then((gameData) => {
               let gamesList = [];
               const upcomingGames = gameData.events;
-              if (upcomingGames.length)
-                for (var i in upcomingGames) {
-                  gamesList.push(
-                    `
+              for (var i in upcomingGames) {
+                gamesList.push(
+                  `
                     ${upcomingGames[i].strHomeTeam} VS ${upcomingGames[i].strAwayTeam}
                     **VENUE:** ${upcomingGames[i].strVenue}
                     **LEAGUE:** ${upcomingGames[i].strLeague}
@@ -146,15 +141,15 @@ client.on('message', (msg) => {
                     **DATE:** ${upcomingGames[i].dateEvent}
                     **KICK OFF:** ${upcomingGames[i].strTimeLocal}(Local Time)
                     `
-                  );
-                }
-
+                );
+              }
               let fixturesMessage = '';
               for (var game in gamesList) {
                 fixturesMessage += gamesList[game]
               }
               msg.channel.send(embedCreation('Upcoming Matches...', fixturesMessage))
-          });
+            });
+          }
         }
       });
     });
@@ -164,39 +159,35 @@ client.on('message', (msg) => {
     const historyData = async () => {
       const data = await getLeagueData(messageContent);
       if (messageContent.length === 0) {
-        msg.reply('Please select a league. !history (League Name)');
+        msg.channel.send(embedCreation('Whoops!', 'Please select a league. !history (League Name)'));
       } else {
-        msg.reply(data.strDescriptionEN, { split: true });
+        msg.channel.send(data.strDescriptionEN, {split: true});
       }
     };
     historyData();
   }
   // Returns team data (Age, League, Social Links)
   if (command === 'teamdata') {
-    //let team = async () => {
     try {
       let teamData = DB.getTeamByName(messageContent);
       teamData.then((data) => {
-        const teamBadge = data.teams[0].strTeamBadge;
-        msg.reply(
-          `
-            ${data.teams[0].strTeam} team info:\n
-            Current League: ${data.teams[0].strLeague}\n
+        if (data.teams == null) {
+          msg.channel.send(embedCreation('We\'re missing something here!!',`Sorry there is currently no team data available for ${messageContent}.`));
+        } else {
+          const teamBadge = data.teams[0].strTeamBadge;
+          msg.channel.send(embedCreation(`${data.teams[0].strTeam} team info:`, `Current League: ${data.teams[0].strLeague}\n
             Year Formed: ${data.teams[0].intFormedYear}\n
             Stadium: ${data.teams[0].strStadium}\n
             Stadium Location: ${data.teams[0].strStadiumLocation}\n
             Website: <http://${data.teams[0].strWebsite}>\n
             Facebook: <http://${data.teams[0].strFacebook}>\n
             Twitter: <http://${data.teams[0].strTwitter}>\n
-            Instagram: <http://${data.teams[0].strInstagram}>\n`,
-          { files: [teamBadge] }
-        );
+            Instagram: <http://${data.teams[0].strInstagram}>\n`))
+        }
       });
     } catch (e) {
-      msg.reply(`Sorry there is currently no team data available for ${messageContent}.`)
+      msg.channel.send(embedCreation('We\'re missing something here!!',`Sorry there is currently no team data available for ${messageContent}.`));
     }
-    // };
-    // team();
   }
   //Get data for all live games or a team specific live game.
   if (command === 'livescores') {
@@ -213,15 +204,15 @@ client.on('message', (msg) => {
         gameString += liveGameList[i];
       };
       if (liveGameList.length == 0) {
-        msg.reply(`There are currently no live games.`);
+        msg.channel.send(embedCreation('All players are being lazy', `There are currently no live games.`));
       } else if (messageContent.length > 1) {
         for (var i in liveGameList) {
           if (liveGameList[i].toLowerCase().includes(messageContent)) {
-            msg.reply(liveGameList[i].toString())
+            msg.channel.send(embedCreation('Current Live Games:', liveGameList[i].toString()))
           } else {
-          msg.reply(`${messageContent} are not currently playing. Here are their next games..`);
-          msg.channel.send(`!fixtures ${messageContent}`)
-          return
+            msg.reply(`${messageContent} are not currently playing. Here are their next games..`);
+            msg.channel.send(`!fixtures ${messageContent}`)
+            return
           }
         };
       } else {
@@ -273,7 +264,7 @@ client.on('message', (msg) => {
             getEventStats(eventID).then((stats) => {
               let s = stats.eventstats;
               if (s === null) {
-                msg.reply('Sorry, there are no previous game stats available for your team right now!')
+                msg.channel.send(embedCreation('Nothing to see here!', 'Sorry, there are no previous game stats available for your team right now!'))
               } else {
                 let dataList =
                   [
@@ -324,17 +315,6 @@ function embedCreation(title, body) {
 function similarityCheck(input, dataList) {
   let checkForMatch = stringSimilarity.findBestMatch(input, dataList);
   return checkForMatch.bestMatch.target;
-}
-
-//Retrives the ID of a team if a player is subscribed.
-function checkSubscriptionStatus(userID) {
-  let teamID;
-  for (var i in subscriptions) {
-    if (subscriptions[i].user === userID) {
-      teamID = subscriptions[i].teamID;
-    }
-  }
-  return teamID;
 }
 
 // retrieve individual player data.
